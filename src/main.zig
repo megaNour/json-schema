@@ -4,10 +4,11 @@ const json_schema = @import("json_schema");
 var indent_lvl: u8 = 0;
 const space_buffer = [_]u8{' '} ** 256;
 pub fn main() !void {
+    const input = @import("config").schema;
     const parsed = try std.json.parseFromSlice(
         std.json.Value,
         std.heap.page_allocator,
-        @embedFile("resources/simple_schema.json"),
+        @embedFile(input),
         .{},
     );
     std.debug.print("pub const Schema = struct {{\n", .{});

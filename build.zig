@@ -83,6 +83,16 @@ pub fn build(b: *std.Build) void {
         }),
     });
 
+    // NOTE: Configurability for the generator
+    // TODO: accept multiple schemas
+    //
+    // 1st add the option to the zig build cli
+    const schema = b.option([]const u8, "schema", "JSON Schema location") orelse "resources/simple_schema.json";
+    // 2nd inject the result in the source code
+    const options = b.addOptions();
+    options.addOption([]const u8, "schema", schema);
+    exe.root_module.addOptions("config", options);
+
     // This declares intent for the executable to be installed into the
     // install prefix when running `zig build` (i.e. when executing the default
     // step). By default the install prefix is `zig-out/` but can be overridden
