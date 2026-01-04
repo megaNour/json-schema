@@ -5,12 +5,11 @@ const ArgIterator = std.process.ArgIterator;
 const json_schema = @import("json_schema");
 const jump = @import("jump");
 
-var indent_lvl: u8 = 0;
-
 const ArgError = error{ InputFileMissing, OutputFileMissing };
 const ParsingError = error{UnsupportedToken};
 
 pub fn main() !void {
+    // A bit of setup
     var stderr_buffer: [64]u8 = undefined;
     var stderr_writer = std.fs.File.stderr().writer(&stderr_buffer);
     const stderr = &stderr_writer.interface;
@@ -34,6 +33,7 @@ pub fn main() !void {
     }, .{});
     defer output_file.close();
 
+    // Read and parse json
     const stat = try input_file.stat();
     const input_file_buffer = try std.heap.page_allocator.alloc(u8, stat.size);
     defer std.heap.page_allocator.free(input_file_buffer);
@@ -47,6 +47,7 @@ pub fn main() !void {
     );
     defer parsed.deinit();
 
+    // Generate zig code
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
@@ -84,18 +85,5 @@ pub fn walkEntry(entry: *const ObjectMap.Entry, allocator: std.mem.Allocator, bu
         else => {
             return error.UnsupportedToken;
         },
-    }
-}
-
-fn get_file_arg(pos_jumper: jump.OverPosLean(ArgIterator), stderr: std.fs.File.Writer) ?[]const u8 {
-    if (pos_jumper.next()) |opt| {
-        return opt;
-    } else |err| {
-        switch (err) {
-            jump.LocalParsingError.MissingValue => {
-                try stderr.print("{any}, hint: {s}", .{ err, pos_jumper.diag.debug_hint });
-            },
-            jump.LocalParsingError.ForbiddenValue => unreachable,
-        }
     }
 }
