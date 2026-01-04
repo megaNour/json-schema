@@ -1,43 +1,95 @@
 const std = @import("std");
 const ObjectMap = std.json.ObjectMap;
+const ArgIterator = std.process.ArgIterator;
+
 const json_schema = @import("json_schema");
+const jump = @import("jump");
+
 var indent_lvl: u8 = 0;
 const space_buffer = [_]u8{' '} ** 256;
+
+const ArgError = error{ InputFileMissing, OutputFileMissing };
+
 pub fn main() !void {
-    const input = @import("config").schema;
+    var stderr_buffer: [64]u8 = undefined;
+    var stderr_writer = std.fs.File.stderr().writer(&stderr_buffer);
+    const stderr = &stderr_writer.interface;
+
+    const args_iterator = try std.process.argsWithAllocator(std.heap.page_allocator);
+    var pos_jumper = jump.OverPosLean(ArgIterator).init(args_iterator);
+    _ = pos_jumper.next();
+
+    // Args parsing
+    const input_file = try std.fs.cwd().openFile(pos_jumper.next() orelse {
+        try stderr.writeAll("no input file provided. TODO: print help :-)\n");
+        try stderr.flush();
+        std.process.exit(0);
+    }, .{ .mode = .read_only });
+    defer input_file.close();
+
+    const output_file = try std.fs.cwd().createFile(pos_jumper.next() orelse {
+        try stderr.writeAll("no output file provided. TODO: print help :-)\n");
+        try stderr.flush();
+        std.process.exit(0);
+    }, .{});
+    defer output_file.close();
+
+    const stat = try input_file.stat();
+    const input_file_buffer = try std.heap.page_allocator.alloc(u8, stat.size);
+    defer std.heap.page_allocator.free(input_file_buffer);
+    _ = try input_file.readAll(input_file_buffer);
+
     const parsed = try std.json.parseFromSlice(
         std.json.Value,
         std.heap.page_allocator,
-        @embedFile(input),
+        input_file_buffer,
         .{},
     );
-    std.debug.print("pub const Schema = struct {{\n", .{});
+
+    var output_buffer: [128_000]u8 = undefined;
+    var output_file_writer = std.fs.File.writer(output_file, &output_buffer);
+    var w = &output_file_writer.interface;
+    try w.print("pub const Schema = struct {{\n", .{});
     var iterator = parsed.value.object.get("properties").?.object.iterator();
     while (iterator.next()) |entry| {
-        walkEntry(&entry);
-        std.debug.print(",\n", .{});
+        try walkEntry(&entry, w);
+        try w.print(",\n", .{});
     }
-    std.debug.print("}}\n", .{});
+    try w.print("}};\n", .{});
+    try w.flush();
 }
 
-pub fn walkEntry(entry: *const ObjectMap.Entry) void {
+pub fn walkEntry(entry: *const ObjectMap.Entry, w: *std.io.Writer) !void {
     indent_lvl += 1;
     switch (entry.value_ptr.*) {
         .object => |value| {
-            std.debug.print("{s}{s}: ", .{ space_buffer[0 .. indent_lvl * 4], entry.key_ptr.* });
+            try w.print("{s}{s}: ", .{ space_buffer[0 .. indent_lvl * 4], entry.key_ptr.* });
             var iterator = value.iterator();
             while (iterator.next()) |sub_entry| {
-                walkEntry(&sub_entry);
+                try walkEntry(&sub_entry, w);
             }
         },
         .string => |value| {
             if (std.mem.eql(u8, value, "string")) {
-                std.debug.print("[]const u8", .{});
-            } else if (std.mem.eql(u8, value, "integer")) std.debug.print("u8", .{});
+                try w.print("[]const u8", .{});
+            } else if (std.mem.eql(u8, value, "integer")) try w.print("u8", .{});
         },
         else => {
             std.debug.panic("cannot handle type: {}\n", .{entry.value_ptr.*});
         },
     }
     indent_lvl -= 1;
+}
+
+fn get_file_arg(pos_jumper: jump.OverPosLean(ArgIterator), stderr: std.fs.File.Writer) ?[]const u8 {
+    if (pos_jumper.next()) |opt| {
+        return opt;
+    } else |err| {
+        switch (err) {
+            jump.LocalParsingError.MissingValue => {
+                try stderr.print("{any}, hint: {s}", .{ err, pos_jumper.diag.debug_hint });
+            },
+            jump.LocalParsingError.ForbiddenValue => unreachable,
+        }
+    }
 }

@@ -41,6 +41,12 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
 
+    // NOTE: adding my very own jump :')
+    const jump = b.addModule("jump", .{
+        .root_source_file = b.path("lib/jump/src/root.zig"),
+        .target = target,
+    });
+
     // Here we define an executable. An executable needs to have a root module
     // which needs to expose a `main` function. While we could add a main function
     // to the module defined above, it's sometimes preferable to split business
@@ -79,19 +85,11 @@ pub fn build(b: *std.Build) void {
                 // can be extremely useful in case of collisions (which can happen
                 // importing modules from different packages).
                 .{ .name = "json_schema", .module = mod },
+                // NOTE: adding my very own jump :')
+                .{ .name = "jump", .module = jump },
             },
         }),
     });
-
-    // NOTE: Configurability for the generator
-    // TODO: accept multiple schemas
-    //
-    // 1st add the option to the zig build cli
-    const schema = b.option([]const u8, "schema", "JSON Schema location") orelse "resources/simple_schema.json";
-    // 2nd inject the result in the source code
-    const options = b.addOptions();
-    options.addOption([]const u8, "schema", schema);
-    exe.root_module.addOptions("config", options);
 
     // This declares intent for the executable to be installed into the
     // install prefix when running `zig build` (i.e. when executing the default

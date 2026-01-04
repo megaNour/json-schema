@@ -1,0 +1,3 @@
+[submodule "lib/jump"]
+	path = lib/jump
+	url = https://github.com/megaNour/jump.git
