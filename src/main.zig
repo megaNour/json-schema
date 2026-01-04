@@ -8,6 +8,7 @@ const jump = @import("jump");
 var indent_lvl: u8 = 0;
 
 const ArgError = error{ InputFileMissing, OutputFileMissing };
+const ParsingError = error{UnsupportedToken};
 
 pub fn main() !void {
     var stderr_buffer: [64]u8 = undefined;
@@ -81,7 +82,7 @@ pub fn walkEntry(entry: *const ObjectMap.Entry, allocator: std.mem.Allocator, bu
             } else if (std.mem.eql(u8, value, "integer")) try buffer.appendSlice(allocator, "u8");
         },
         else => {
-            std.debug.panic("cannot handle type: {}\n", .{entry.value_ptr.*});
+            return error.UnsupportedToken;
         },
     }
 }
