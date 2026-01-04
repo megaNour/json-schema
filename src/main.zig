@@ -6,7 +6,6 @@ const json_schema = @import("json_schema");
 const jump = @import("jump");
 
 var indent_lvl: u8 = 0;
-const space_buffer = [_]u8{' '} ** 256;
 
 const ArgError = error{ InputFileMissing, OutputFileMissing };
 
@@ -41,44 +40,52 @@ pub fn main() !void {
 
     const parsed = try std.json.parseFromSlice(
         std.json.Value,
-        std.heap.page_allocator,
+        std.heap.page_allocator, // will be wrapped in an arena anyway
         input_file_buffer,
         .{},
     );
 
-    var output_buffer: [128_000]u8 = undefined;
-    var output_file_writer = std.fs.File.writer(output_file, &output_buffer);
-    var w = &output_file_writer.interface;
-    try w.print("pub const Schema = struct {{\n", .{});
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    var zig_source_buffer = try std.ArrayList(u8).initCapacity(allocator, 128_000);
+    try zig_source_buffer.appendSlice(allocator, "pub const Schema = struct {");
     var iterator = parsed.value.object.get("properties").?.object.iterator();
     while (iterator.next()) |entry| {
-        try walkEntry(&entry, w);
-        try w.print(",\n", .{});
+        try walkEntry(&entry, allocator, &zig_source_buffer);
+        try zig_source_buffer.appendSlice(allocator, ",");
     }
-    try w.print("}};\n", .{});
-    try w.flush();
+    try zig_source_buffer.appendSlice(allocator, "};");
+    try zig_source_buffer.append(allocator, 0);
+    const tree_input: []const u8 = zig_source_buffer.items;
+    if (std.zig.Ast.parse(allocator, tree_input[0 .. tree_input.len - 1 :0], .zig)) |tree| {
+        const rendered_buffer = try tree.renderAlloc(allocator);
+        try output_file.writeAll(rendered_buffer);
+    } else |err| {
+        std.debug.print("{any}", .{err});
+        std.process.exit(1);
+    }
 }
 
-pub fn walkEntry(entry: *const ObjectMap.Entry, w: *std.io.Writer) !void {
-    indent_lvl += 1;
+pub fn walkEntry(entry: *const ObjectMap.Entry, allocator: std.mem.Allocator, buffer: *std.ArrayList(u8)) !void {
     switch (entry.value_ptr.*) {
         .object => |value| {
-            try w.print("{s}{s}: ", .{ space_buffer[0 .. indent_lvl * 4], entry.key_ptr.* });
+            try buffer.appendSlice(allocator, entry.key_ptr.*);
+            try buffer.append(allocator, ':');
             var iterator = value.iterator();
             while (iterator.next()) |sub_entry| {
-                try walkEntry(&sub_entry, w);
+                try walkEntry(&sub_entry, allocator, buffer);
             }
         },
         .string => |value| {
             if (std.mem.eql(u8, value, "string")) {
-                try w.print("[]const u8", .{});
-            } else if (std.mem.eql(u8, value, "integer")) try w.print("u8", .{});
+                try buffer.appendSlice(allocator, "[]const u8");
+            } else if (std.mem.eql(u8, value, "integer")) try buffer.appendSlice(allocator, "u8");
         },
         else => {
             std.debug.panic("cannot handle type: {}\n", .{entry.value_ptr.*});
         },
     }
-    indent_lvl -= 1;
 }
 
 fn get_file_arg(pos_jumper: jump.OverPosLean(ArgIterator), stderr: std.fs.File.Writer) ?[]const u8 {
