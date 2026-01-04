@@ -44,6 +44,7 @@ pub fn main() !void {
         input_file_buffer,
         .{},
     );
+    defer parsed.deinit();
 
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -58,13 +59,10 @@ pub fn main() !void {
     try zig_source_buffer.appendSlice(allocator, "};");
     try zig_source_buffer.append(allocator, 0);
     const tree_input: []const u8 = zig_source_buffer.items;
-    if (std.zig.Ast.parse(allocator, tree_input[0 .. tree_input.len - 1 :0], .zig)) |tree| {
-        const rendered_buffer = try tree.renderAlloc(allocator);
-        try output_file.writeAll(rendered_buffer);
-    } else |err| {
-        std.debug.print("{any}", .{err});
-        std.process.exit(1);
-    }
+    var tree = try std.zig.Ast.parse(allocator, tree_input[0 .. tree_input.len - 1 :0], .zig);
+    defer tree.deinit(allocator);
+    const rendered_buffer = try tree.renderAlloc(allocator);
+    try output_file.writeAll(rendered_buffer);
 }
 
 pub fn walkEntry(entry: *const ObjectMap.Entry, allocator: std.mem.Allocator, buffer: *std.ArrayList(u8)) !void {
