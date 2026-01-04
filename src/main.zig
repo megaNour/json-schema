@@ -6,9 +6,6 @@ const File = std.fs.File;
 const generateZigCode = @import("json_schema").generateZigCode;
 const jump = @import("jump");
 
-const ArgError = error{ InputFileMissing, OutputFileMissing };
-const ParsingError = error{UnsupportedToken};
-
 pub fn main() !void {
     var stderr_buffer: [64]u8 = undefined;
     var stderr_writer = File.stderr().writer(&stderr_buffer);
