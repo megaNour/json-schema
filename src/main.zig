@@ -23,14 +23,14 @@ pub fn main() !void {
     const input_file = try std.fs.cwd().openFile(pos_jumper.next() orelse {
         try stderr.writeAll("no input file provided. TODO: print help :-)\n");
         try stderr.flush();
-        std.process.exit(0);
+        std.process.exit(1);
     }, .{ .mode = .read_only });
     defer input_file.close();
 
     const output_file = try std.fs.cwd().createFile(pos_jumper.next() orelse {
         try stderr.writeAll("no output file provided. TODO: print help :-)\n");
         try stderr.flush();
-        std.process.exit(0);
+        std.process.exit(1);
     }, .{});
     defer output_file.close();
 
