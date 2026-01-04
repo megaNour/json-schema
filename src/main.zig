@@ -32,5 +32,5 @@ pub fn main() !void {
     }, .{});
     defer out.close();
 
-    try generateZigCode(in, out);
+    try generateZigCode(std.heap.page_allocator, in, out);
 }
