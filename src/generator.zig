@@ -1,8 +1,8 @@
 const std = @import("std");
 const File = std.fs.File;
 
-/// Read in as a JSON Schema
-/// Write out as a zig struct
+/// Read 'in' as a JSON Schema
+/// Write 'out' as a zig struct
 /// base_allocator will be used as child allocator of arenas
 pub fn generateZigCode(base_allocator: std.mem.Allocator, in: File, out: File) !void {
     // Read and parse json
@@ -28,7 +28,7 @@ pub fn generateZigCode(base_allocator: std.mem.Allocator, in: File, out: File) !
     var iterator = parsed.value.object.get("properties").?.object.iterator();
     while (iterator.next()) |entry| {
         try walkEntry(&entry, allocator, &zig_source_buffer);
-        try zig_source_buffer.appendSlice(allocator, ",");
+        try zig_source_buffer.append(allocator, ',');
     }
     try zig_source_buffer.appendSlice(allocator, "};");
     try zig_source_buffer.append(allocator, 0);
