@@ -4,7 +4,7 @@ const File = std.fs.File;
 /// Read 'in' as a JSON Schema
 /// Write 'out' as a zig struct
 /// base_allocator will be used as child allocator of arenas
-pub fn generateZigCode(base_allocator: std.mem.Allocator, in: File, out: File) !void {
+pub fn model(base_allocator: std.mem.Allocator, in: File, out: File) !void {
     // Read and parse json
     const stat = try in.stat();
     const input_file_buffer = try base_allocator.alloc(u8, stat.size);

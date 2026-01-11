@@ -3,8 +3,8 @@ const ObjectMap = std.json.ObjectMap;
 const ArgIterator = std.process.ArgIterator;
 const File = std.fs.File;
 
-const generateZigCode = @import("json_schema").generateZigCode;
 const jump = @import("jump");
+const model = @import("json_schema").model;
 
 pub fn main() !void {
     var stderr_buffer: [64]u8 = undefined;
@@ -29,5 +29,5 @@ pub fn main() !void {
     }, .{});
     defer out.close();
 
-    try generateZigCode(std.heap.page_allocator, in, out);
+    try model(std.heap.page_allocator, in, out);
 }
