@@ -1,4 +1,6 @@
 const std = @import("std");
+const expect = std.testing.expect;
+const expectError = std.testing.expectError;
 const File = std.fs.File;
 
 /// Read 'in' as a JSON Schema
@@ -58,3 +60,52 @@ fn walkEntry(entry: *const std.json.ObjectMap.Entry, allocator: std.mem.Allocato
         },
     }
 }
+
+pub fn validator(base_allocator: std.mem.Allocator, in: File, out: File) !void {
+    _ = base_allocator;
+    _ = in;
+    _ = out;
+}
+pub const StringValidationError = error{
+    MinimumLengthError,
+    MaximumLengthError,
+};
+
+test "String too short" {
+    const sv = String{ .min = 2 };
+    try expectError(StringValidationError.MinimumLengthError, sv.validate("a"));
+}
+
+test "String too long" {
+    const sv = String{ .max = 2 };
+    try expectError(StringValidationError.MaximumLengthError, sv.validate("alif"));
+}
+
+test String {
+    const sv = String{ .min = 2, .max = 4 };
+    try sv.validate("alif");
+}
+
+/// pattern constraint is not supported for now
+pub const String = struct {
+    min: u8 = 0,
+    max: usize = std.math.maxInt(usize),
+    // TODO: accept a pattern
+
+    pub fn validate(self: *const String, value: []const u8) StringValidationError!void {
+        if (value.len < self.min) return StringValidationError.MinimumLengthError;
+        if (value.len > self.max) return StringValidationError.MaximumLengthError;
+    }
+};
+
+// TODO: and test it plz
+pub const Number = struct {
+    min: u8 = 0,
+    max: u8 = 150,
+
+    pub fn validate(self: *const String, value: []const u8) StringValidationError!void {
+        // TODO: in a hurry
+        _ = self;
+        _ = value;
+    }
+};

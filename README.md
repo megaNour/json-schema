@@ -35,7 +35,7 @@ rather than tooling friction.
 Run from repo root:
 
 ```sh
-$ zig build run -- src/resources/simple_schema.json src/resources/simple_schema.zig
+$ zig build run -- model src/resources/simple_schema.json src/resources/simple_schema.zig
 $ cat src/resources/simple_schema.zig
 ```
 
@@ -51,5 +51,5 @@ pub const Schema = struct {
 You can replay it with the generated executable:
 
 ```sh
-$ zig-out/bin/json_schema src/resources/simple_schema.json src/resources/simple_schema.zig
+$ zig-out/bin/json_schema model src/resources/simple_schema.json src/resources/simple_schema.zig
 ```
