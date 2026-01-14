@@ -1,4 +1,7 @@
 const std = @import("std");
+const Allocator = std.mem.Allocator;
+const Parsed = std.json.Parsed;
+const Value = std.json.Value;
 const expect = std.testing.expect;
 const expectError = std.testing.expectError;
 const File = std.fs.File;
@@ -6,19 +9,9 @@ const File = std.fs.File;
 /// Read 'in' as a JSON Schema
 /// Write 'out' as a zig struct
 /// base_allocator will be used as child allocator of arenas
-pub fn model(base_allocator: std.mem.Allocator, in: File, out: File) !void {
+pub fn model(base_allocator: Allocator, in: File, out: File) !void {
     // Read and parse json
-    const stat = try in.stat();
-    const input_file_buffer = try base_allocator.alloc(u8, stat.size);
-    defer base_allocator.free(input_file_buffer);
-    _ = try in.readAll(input_file_buffer);
-
-    const parsed = try std.json.parseFromSlice(
-        std.json.Value,
-        base_allocator,
-        input_file_buffer,
-        .{},
-    );
+    const parsed = try load(base_allocator, in, Value);
     defer parsed.deinit();
 
     // Generate zig code
@@ -40,7 +33,23 @@ pub fn model(base_allocator: std.mem.Allocator, in: File, out: File) !void {
     try out.writeAll(rendered_buffer);
 }
 
-fn walkEntry(entry: *const std.json.ObjectMap.Entry, allocator: std.mem.Allocator, buffer: *std.ArrayList(u8)) !void {
+pub const FileParseError = File.ReadError || File.StatError || std.json.ParseError(std.json.Scanner);
+
+fn load(base_allocator: Allocator, in: File, comptime T: type) FileParseError!Parsed(T) {
+    const stat = try in.stat();
+    const input_file_buffer = try base_allocator.alloc(u8, stat.size);
+    _ = try in.readAll(input_file_buffer);
+    defer base_allocator.free(input_file_buffer);
+
+    return try std.json.parseFromSlice(
+        T,
+        base_allocator,
+        input_file_buffer,
+        .{},
+    );
+}
+
+fn walkEntry(entry: *const std.json.ObjectMap.Entry, allocator: Allocator, buffer: *std.ArrayList(u8)) !void {
     switch (entry.value_ptr.*) {
         .object => |value| {
             try buffer.appendSlice(allocator, entry.key_ptr.*);
@@ -61,7 +70,7 @@ fn walkEntry(entry: *const std.json.ObjectMap.Entry, allocator: std.mem.Allocato
     }
 }
 
-pub fn validator(base_allocator: std.mem.Allocator, in: File, out: File) !void {
+pub fn validator(base_allocator: Allocator, in: File, out: File) !void {
     _ = base_allocator;
     _ = in;
     _ = out;
