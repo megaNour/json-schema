@@ -22,13 +22,14 @@ pub fn model(base_allocator: Allocator, in: File, out: File) !void {
     try zig_source_buffer.appendSlice(allocator, "pub const Schema = struct {");
     var iterator = parsed.value.object.get("properties").?.object.iterator();
     while (iterator.next()) |entry| {
-        try walkEntry(&entry, allocator, &zig_source_buffer);
+        try walkModelEntry(&entry, allocator, &zig_source_buffer);
         try zig_source_buffer.append(allocator, ',');
     }
     try zig_source_buffer.appendSlice(allocator, "};");
     try zig_source_buffer.append(allocator, 0);
     const tree_input: []const u8 = zig_source_buffer.items;
     var tree = try std.zig.Ast.parse(allocator, tree_input[0 .. tree_input.len - 1 :0], .zig);
+    std.debug.print("{s}\n\n", .{tree_input});
     const rendered_buffer = try tree.renderAlloc(allocator);
     try out.writeAll(rendered_buffer);
 }
@@ -49,14 +50,14 @@ fn load(base_allocator: Allocator, in: File, comptime T: type) FileParseError!Pa
     );
 }
 
-fn walkEntry(entry: *const std.json.ObjectMap.Entry, allocator: Allocator, buffer: *std.ArrayList(u8)) !void {
+fn walkModelEntry(entry: *const std.json.ObjectMap.Entry, allocator: Allocator, buffer: *std.ArrayList(u8)) !void {
     switch (entry.value_ptr.*) {
         .object => |value| {
             try buffer.appendSlice(allocator, entry.key_ptr.*);
             try buffer.append(allocator, ':');
             var iterator = value.iterator();
             while (iterator.next()) |sub_entry| {
-                try walkEntry(&sub_entry, allocator, buffer);
+                try walkModelEntry(&sub_entry, allocator, buffer);
             }
         },
         .string => |value| {
@@ -70,11 +71,116 @@ fn walkEntry(entry: *const std.json.ObjectMap.Entry, allocator: Allocator, buffe
     }
 }
 
+pub const SchemaParsingError = error{ InvalidSchema, Unsupported };
+
 pub fn validator(base_allocator: Allocator, in: File, out: File) !void {
-    _ = base_allocator;
-    _ = in;
-    _ = out;
+    // Read and parse json
+    // NOTE: I don't know why I need to type "parsed" here? The LSP should infer it.
+    const parsed: Parsed(Value) = try load(base_allocator, in, Value);
+    defer parsed.deinit();
+
+    // Generate zig code
+    var arena = std.heap.ArenaAllocator.init(base_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    var zig_source_buffer = try std.ArrayList(u8).initCapacity(allocator, 128_000);
+    try zig_source_buffer.appendSlice(allocator, "const validator = @import(\"../validator.zig\");pub const Schema = struct {");
+
+    try walkSchemaEntry(allocator, &zig_source_buffer, &parsed.value);
+    try zig_source_buffer.appendSlice(allocator, "};");
+    try zig_source_buffer.append(allocator, 0);
+
+    const tree_input: []const u8 = zig_source_buffer.items;
+    var tree = try std.zig.Ast.parse(allocator, tree_input[0 .. tree_input.len - 1 :0], .zig);
+    const rendered_buffer = try tree.renderAlloc(allocator);
+    try out.writeAll(rendered_buffer);
 }
+
+// TODO: handle $schema $id $ref...
+fn walkSchemaEntry(allocator: Allocator, zig_source_buffer: *std.ArrayList(u8), value: *const Value) !void {
+    switch (value.*) {
+        .object => |obj| {
+            if (obj.get("type")) |json_type_value| {
+                switch (json_type_value) {
+                    .string => |jtype| {
+                        if (std.mem.eql(u8, jtype, "object")) {
+                            std.debug.print("{s} has {any} properties.\n", .{ obj.get("type").?.string, obj.unmanaged });
+                            if (obj.get("properties")) |properties| {
+                                switch (properties) {
+                                    .object => |o| {
+                                        var iterator = o.iterator();
+                                        while (iterator.next()) |entry| {
+                                            try zig_source_buffer.appendSlice(allocator, entry.key_ptr.*);
+                                            try zig_source_buffer.appendSlice(allocator, ": ");
+                                            try walkSchemaEntry(allocator, zig_source_buffer, entry.value_ptr);
+                                        }
+                                    },
+                                    else => return SchemaParsingError.InvalidSchema,
+                                }
+                            }
+                        } else if (std.mem.eql(u8, jtype, "string")) {
+                            try zig_source_buffer.appendSlice(allocator, "validator.String = .{");
+                            if (obj.get("minLength")) |min| {
+                                switch (min) {
+                                    .integer => |val| {
+                                        try zig_source_buffer.appendSlice(allocator, ".min = ");
+                                        var buf: [20]u8 = undefined;
+                                        const str = try std.fmt.bufPrint(&buf, "{d},", .{val});
+                                        try zig_source_buffer.appendSlice(allocator, str);
+                                    },
+                                    else => return SchemaParsingError.InvalidSchema,
+                                }
+                            }
+                            if (obj.get("maxLength")) |max| {
+                                switch (max) {
+                                    .integer => |val| {
+                                        try zig_source_buffer.appendSlice(allocator, ".max = ");
+                                        var buf: [20]u8 = undefined;
+                                        const str = try std.fmt.bufPrint(&buf, "{d},", .{val});
+                                        try zig_source_buffer.appendSlice(allocator, str);
+                                    },
+                                    else => return SchemaParsingError.InvalidSchema,
+                                }
+                            }
+                            try zig_source_buffer.appendSlice(allocator, "},");
+                        } else if (std.mem.eql(u8, jtype, "integer")) {
+                            try zig_source_buffer.appendSlice(allocator, "validator.Integer = .{");
+                            if (obj.get("minimum")) |min| {
+                                switch (min) {
+                                    .integer => |val| {
+                                        try zig_source_buffer.appendSlice(allocator, ".min = ");
+                                        var buf: [20]u8 = undefined;
+                                        const str = try std.fmt.bufPrint(&buf, "{d},", .{val});
+                                        try zig_source_buffer.appendSlice(allocator, str);
+                                    },
+                                    else => return SchemaParsingError.InvalidSchema,
+                                }
+                            }
+                            if (obj.get("maximum")) |max| {
+                                switch (max) {
+                                    .integer => |val| {
+                                        try zig_source_buffer.appendSlice(allocator, ".max = ");
+                                        var buf: [20]u8 = undefined;
+                                        const str = try std.fmt.bufPrint(&buf, "{d},", .{val});
+                                        try zig_source_buffer.appendSlice(allocator, str);
+                                    },
+                                    else => return SchemaParsingError.InvalidSchema,
+                                }
+                            }
+                            try zig_source_buffer.appendSlice(allocator, "},");
+                        }
+                    },
+                    else => return SchemaParsingError.InvalidSchema,
+                }
+            }
+        },
+        .bool => |b| {
+            if (!b) return SchemaParsingError.InvalidSchema; // `true` is a valid schema unlike `false`
+        },
+        else => return SchemaParsingError.InvalidSchema,
+    }
+}
+
 pub const StringValidationError = error{
     MinimumLengthError,
     MaximumLengthError,
