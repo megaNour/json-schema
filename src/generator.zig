@@ -86,7 +86,7 @@ pub fn validator(base_allocator: Allocator, in: File, out: File) !void {
     var zig_source_buffer = try std.ArrayList(u8).initCapacity(allocator, 128_000);
     try zig_source_buffer.appendSlice(allocator, "const validator = @import(\"../validator.zig\");pub const Schema = struct {");
 
-    try walkSchemaEntry(allocator, &zig_source_buffer, &parsed.value);
+    try walkSchemaEntryDropped(allocator, &zig_source_buffer, &parsed.value);
     try zig_source_buffer.appendSlice(allocator, "};");
     try zig_source_buffer.append(allocator, 0);
 
@@ -97,7 +97,7 @@ pub fn validator(base_allocator: Allocator, in: File, out: File) !void {
 }
 
 // TODO: handle $schema $id $ref...
-fn walkSchemaEntry(allocator: Allocator, zig_source_buffer: *std.ArrayList(u8), value: *const Value) !void {
+fn walkSchemaEntryDropped(allocator: Allocator, zig_source_buffer: *std.ArrayList(u8), value: *const Value) !void {
     switch (value.*) {
         .object => |obj| {
             if (obj.get("type")) |json_type_value| {
@@ -112,7 +112,7 @@ fn walkSchemaEntry(allocator: Allocator, zig_source_buffer: *std.ArrayList(u8), 
                                         while (iterator.next()) |entry| {
                                             try zig_source_buffer.appendSlice(allocator, entry.key_ptr.*);
                                             try zig_source_buffer.appendSlice(allocator, ": ");
-                                            try walkSchemaEntry(allocator, zig_source_buffer, entry.value_ptr);
+                                            try walkSchemaEntryDropped(allocator, zig_source_buffer, entry.value_ptr);
                                         }
                                     },
                                     else => return SchemaParsingError.InvalidSchema,
@@ -180,47 +180,3 @@ fn walkSchemaEntry(allocator: Allocator, zig_source_buffer: *std.ArrayList(u8), 
         else => return SchemaParsingError.InvalidSchema,
     }
 }
-
-pub const StringValidationError = error{
-    MinimumLengthError,
-    MaximumLengthError,
-};
-
-test "String too short" {
-    const sv = String{ .min = 2 };
-    try expectError(StringValidationError.MinimumLengthError, sv.validate("a"));
-}
-
-test "String too long" {
-    const sv = String{ .max = 2 };
-    try expectError(StringValidationError.MaximumLengthError, sv.validate("alif"));
-}
-
-test String {
-    const sv = String{ .min = 2, .max = 4 };
-    try sv.validate("alif");
-}
-
-/// pattern constraint is not supported for now
-pub const String = struct {
-    min: u8 = 0,
-    max: usize = std.math.maxInt(usize),
-    // TODO: accept a pattern
-
-    pub fn validate(self: *const String, value: []const u8) StringValidationError!void {
-        if (value.len < self.min) return StringValidationError.MinimumLengthError;
-        if (value.len > self.max) return StringValidationError.MaximumLengthError;
-    }
-};
-
-// TODO: and test it plz
-pub const Number = struct {
-    min: u8 = 0,
-    max: u8 = 150,
-
-    pub fn validate(self: *const String, value: []const u8) StringValidationError!void {
-        // TODO: in a hurry
-        _ = self;
-        _ = value;
-    }
-};
