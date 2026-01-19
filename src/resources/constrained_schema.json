@@ -1,4 +1,5 @@
 {
+  "title": "mySchema",
   "type": "object",
   "properties": {
     "name": {

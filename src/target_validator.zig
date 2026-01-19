@@ -2,14 +2,21 @@ const std = @import("std");
 const Scanner = std.json.Scanner;
 const eql = std.mem.eql;
 const validator = @import("validator.zig");
-pub const Person = struct {
-    name: validator.String = .{ .min = 3, .max = 24 },
-    name_seen: bool = false,
-    age: validator.Integer = .{ .min = 0, .max = 200 },
-    age_seen: bool = false,
-    unknown: validator.Extra = .{ .allow = true },
 
-    pub fn validate(self: *const Person, scanner: *Scanner) !void {
+pub const PersonSchema = struct {
+    const description = "this is my target schema";
+    const id = "mySchemaId";
+    const title = "mySchemaTitle";
+};
+
+pub const Person = struct {
+    const name: validator.String = .{ .min = 3, .max = 24 };
+    const name_seen: bool = false;
+    const age: validator.Integer = .{ .min = 0, .max = 200 };
+    const age_seen: bool = false;
+    const unknown: validator.Extra = .{ .allow = true };
+
+    pub fn validate(self: Person, scanner: *Scanner) !void {
         blk: while (scanner.next()) |token| {
             switch (token) {
                 .object_begin => continue,
